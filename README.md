@@ -80,10 +80,14 @@ on -f /net/hu-omap/ /bin/sh
 ls -l /mnt/
 ```
 
-Copy `dist/ID6Term/` to a USB stick (or `scp` it to `/tmp`), then on the head unit:
+Download the latest release from the repository or the [Release page](https://github.com/josephworks/ID6Term/releases).
+
+https://github.com/josephworks/ID6Term/releases
+
+Copy `dist/ID6Term/` or the extracted Release `/ID6Term` to a USB stick (or `scp` it to `/tmp`), then on the head unit:
 
 ```sh
-cd /mnt/umass01200t7/ID6Term      # or wherever the files are
+cd /mnt/umass01200t7/ID6Term      # or wherever the files are extracted/copied
 sh install.sh
 ```
 
