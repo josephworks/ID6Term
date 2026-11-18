@@ -1,0 +1,2 @@
+# Marker for the QNX recursive build (recurse.mk): do not descend into tests/ from the top-level Makefile.
+# The host tests are built with Linux g++ on purpose: make -C tests check

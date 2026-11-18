@@ -1,0 +1,17 @@
+# QNX Momentics build output
+arm/so-le-v7/*.o
+arm/so-le-v7/*.so
+arm/so-le-v7/*.a
+arm/so-le-v7/*.pinfo
+arm/so-le-v7/*.map
+arm/so-le-v7/.depend*
+# host tests
+tests/build/
+# packaging
+dist/
+# generated resource DBs (python res/make_db.py)
+res/ID6Term_ALL_Texts.zip
+res/ID6Term_ALL_Images.zip
+# the head unit's framework libraries: take them from your own firmware dump (opt/hmi/ID5/lib)
+lib/*.so
+__pycache__/

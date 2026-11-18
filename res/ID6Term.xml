@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ID6Term UI description (iDrive PluginApp / RHMI format, same schema as BMW's SecurityMenu / ActiveSeating and
+     NBT-AAD's NbtAad.xml). Ids are shared with src/id6term_app.cpp and res/make_db.py.
+
+     Entry: a "Terminal" row in Media/Radio (native state 20 = ST_Ent_Selection) after the Bluetooth audio row
+     (focus 2270); iDrive creates and places the row itself (applicationType="Custom" + insertStateID /
+     insertAfterFocusID). Pressing it opens our menu, hmiState 10.
+
+     Every <textIdModel> textId must exist in ID6Term_ALL_Texts.zip and the highest textId used by the DB must be
+     declared here, or iDrive drops the whole text DB (every label blank) - NBT-AAD learned that the hard way. -->
+<pluginApps>
+  <pluginApp applicationType="Custom" applicationWeight="198" entryButtonFocusID="32760" insertAfterFocusID="2270" insertStateID="20" text="Terminal">
+    <comment/>
+    <entryButton action="5" id="1" model="3" imageModel="4" previewModel="13">
+      <properties/>
+    </entryButton>
+    <actions>
+      <hmiAction id="5" target="10"/>
+      <!-- menu rows -->
+      <hmiAction id="71" target="11"/>
+      <hmiAction id="72" target="12"/>
+      <hmiAction id="73" target="13"/>
+      <hmiAction id="74" target="14"/>
+      <raAction id="21"/>
+      <raAction id="22"/>
+      <raAction id="23"/>
+      <!-- speller: letter / OK / suggestion -->
+      <raAction id="26"/>
+      <raAction id="27"/>
+      <raAction id="28"/>
+      <!-- quick commands -->
+      <raAction id="30"/>
+      <raAction id="31"/>
+      <raAction id="32"/>
+      <raAction id="33"/>
+      <raAction id="34"/>
+      <raAction id="35"/>
+      <raAction id="36"/>
+      <raAction id="37"/>
+    </actions>
+    <models>
+      <textIdModel id="3" textId="1">
+        <synonyms/>
+      </textIdModel>
+      <imageIdModel id="4" imageId="55001"/>
+      <imageIdModel id="12" imageId="55002"/>
+      <raPreviewModel id="13" modelType="StatePreview" previewState="15"/>
+      <!-- menu row labels -->
+      <textIdModel id="31" textId="10">
+        <synonyms/>
+      </textIdModel>
+      <textIdModel id="32" textId="11">
+        <synonyms/>
+      </textIdModel>
+      <textIdModel id="33" textId="12">
+        <synonyms/>
+      </textIdModel>
+      <textIdModel id="34" textId="13">
+        <synonyms/>
+      </textIdModel>
+      <textIdModel id="35" textId="14">
+        <synonyms/>
+      </textIdModel>
+      <textIdModel id="36" textId="15">
+        <synonyms/>
+      </textIdModel>
+      <textIdModel id="37" textId="16">
+        <synonyms/>
+      </textIdModel>
+      <!-- watermark: screen title "Terminal - Joseph Robinson" and the menu footer line (filled by the app) -->
+      <textIdModel id="38" textId="18">
+        <synonyms/>
+      </textIdModel>
+      <raDataModel id="47"/>
+      <!-- console -->
+      <raDataModel id="40" modelType="Richtext"/>
+      <raListModel id="41" modelType="Richtext"/>
+      <!-- speller -->
+      <textIdModel id="42" textId="20">
+        <synonyms/>
+      </textIdModel>
+      <raDataModel id="43"/>
+      <raListModel id="44"/>
+      <!-- about -->
+      <raListModel id="45" modelType="Richtext"/>
+      <textIdModel id="46" textId="17">
+        <synonyms/>
+      </textIdModel>
+      <!-- quick command labels -->
+      <textIdModel id="50" textId="30">
+        <synonyms/>
+      </textIdModel>
+      <textIdModel id="51" textId="31">
+        <synonyms/>
+      </textIdModel>
+      <textIdModel id="52" textId="32">
+        <synonyms/>
+      </textIdModel>
+      <textIdModel id="53" textId="33">
+        <synonyms/>
+      </textIdModel>
+      <textIdModel id="54" textId="34">
+        <synonyms/>
+      </textIdModel>
+      <textIdModel id="55" textId="35">
+        <synonyms/>
+      </textIdModel>
+      <textIdModel id="56" textId="36">
+        <synonyms/>
+      </textIdModel>
+      <textIdModel id="57" textId="37">
+        <synonyms/>
+      </textIdModel>
+    </models>
+    <events>
+      <focusEvent id="55" target="11"/>
+      <focusEvent id="56" target="12"/>
+    </events>
+    <hmiStates>
+      <hmiState id="10" text="Terminal - Joseph Robinson" textModel="38">
+        <components>
+          <button action="71" id="61" model="31" text="Console"/>
+          <button action="72" id="62" model="32" text="Enter command"/>
+          <button action="21" id="63" model="33" text="Run last command again"/>
+          <button action="73" id="64" model="34" text="Quick commands"/>
+          <separator id="68"/>
+          <button action="22" id="65" model="35" text="Stop running command"/>
+          <button action="23" id="66" model="36" text="Clear console"/>
+          <separator id="69"/>
+          <button action="74" id="67" model="37" text="About"/>
+          <label id="70" model="47" text="ID6Term by Joseph Robinson">
+            <properties>
+              <property id="2" value="false"/>
+            </properties>
+          </label>
+        </components>
+      </hmiState>
+      <!-- Console: the status line (raDataModel 40), a row to open the speller, and the output as one Richtext
+           list cell (raListModel 41, filled by the app; the HMI wraps it and the knob scrolls it). The button also
+           carries the busy ring (property 8) while a command runs. -->
+      <hmiState id="11" parentId="10" text="Console" textModel="31">
+        <components>
+          <label id="83" model="40" text="ready">
+            <properties>
+              <property id="2" value="false"/>
+            </properties>
+          </label>
+          <button action="72" id="81" model="32" text="Enter command"/>
+          <list id="82" model="41"/>
+        </components>
+      </hmiState>
+      <!-- Command: the iDrive speller. textModel = title, resultModel = the text typed so far (set by the app
+           after every letter), suggestModel = rows the user can pick (history + quick commands matching the
+           prefix). action fires per letter with argument 8 = the text ("del" / "delall" for the two delete keys),
+           suggestAction with argument 1 = the row, resultAction when the result field / OK is pressed. -->
+      <hmiState id="12" parentId="10" text="Command" textModel="42">
+        <components>
+          <input id="91" textModel="42" resultModel="43" suggestModel="44" action="26" resultAction="27" suggestAction="28"/>
+        </components>
+      </hmiState>
+      <!-- Quick commands: one row each (raActions 30..37 -> kQuickCommands in the app). -->
+      <hmiState id="13" parentId="10" text="Quick commands" textModel="34">
+        <components>
+          <button action="30" id="101" model="50" text="uname -a"/>
+          <button action="31" id="102" model="51" text="pidin arg"/>
+          <button action="32" id="103" model="52" text="ifconfig"/>
+          <button action="33" id="104" model="53" text="df"/>
+          <button action="34" id="105" model="54" text="ls -la /"/>
+          <button action="35" id="106" model="55" text="ls /mnt /fs /dev/shmem"/>
+          <button action="36" id="107" model="56" text="sloginfo | tail -n 40"/>
+          <button action="37" id="108" model="57" text="date"/>
+        </components>
+      </hmiState>
+      <!-- About: a non-selectable Richtext list holding TextID 17 (the same pattern as ActiveSeating's intro). -->
+      <hmiState id="14" parentId="10" text="About" textModel="37">
+        <properties>
+          <property id="24" value="3"/>
+        </properties>
+        <components>
+          <list id="111" model="45">
+            <properties>
+              <property id="2" value="false"/>
+            </properties>
+          </list>
+        </components>
+      </hmiState>
+      <!-- Preview shown next to the entry row (previewModel 13). Not car-verified; if the Media list rejects the
+           XML, drop previewModel from the entryButton and this state. -->
+      <hmiState id="15" text="Terminal - Joseph Robinson" textModel="38">
+        <components>
+          <image id="121" model="12">
+            <properties>
+              <property id="3" value="true"/>
+              <property id="9" value="549"/>
+              <property id="10" value="484"/>
+              <property id="20" value="0"/>
+              <property id="21" value="0"/>
+            </properties>
+          </image>
+        </components>
+      </hmiState>
+    </hmiStates>
+  </pluginApp>
+</pluginApps>
