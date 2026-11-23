@@ -12,8 +12,9 @@
 //                           result field through raAction 27
 //   hmiState 13  Quick      eight preset commands, one button each (raActions 30..37)
 //   hmiState 14  About      one Richtext text (TextID 17)
-// Commands run through ShellRunner (sh -c in a new process group, output streamed, timeout), the working
-// directory persists between commands, history is kept in /var/opt/id6term/history.
+// Commands run in one shell session through ShellRunner (a long-lived sh in its own process group, output streamed,
+// timeout): cd, variables and functions persist between commands like in a terminal. History is kept in
+// /var/opt/id6term/history.
 //
 // Framework mechanics (all from the car-proven NBT-AAD app, see bmw_rhmi.hpp): our app object is a bmw::PluginApp
 // built with the framework's own constructor; it gets a copy of the PluginApp vtable with onInit / onError /
@@ -48,7 +49,7 @@
 #include "shell_runner.hpp"
 
 #define ID6TERM_AUTHOR  "Joseph Robinson"
-#define ID6TERM_RELEASE "1.0.0"
+#define ID6TERM_RELEASE "1.0.1"
 #define ID6TERM_VERSION "id6term-" ID6TERM_RELEASE " (" __DATE__ " " __TIME__ ")"
 #define ID6TERM_BANNER  "ID6Term " ID6TERM_VERSION " by " ID6TERM_AUTHOR
 
@@ -91,7 +92,8 @@ const char* const kDataDir     = "/var/opt/id6term";          // persistence par
 const char* const kDataDirAlt  = "/dev/shmem";                // fallback when /var/opt is not writable
 const char* const kDisableName = "disable";                   // <dataDir>/disable: do not create the app
 const char* const kHistoryName = "history";
-const char* const kConfigName  = "config";                    // shell=/bin/sh, timeout=20, cwd=/
+const char* const kConfigName  = "config";                    // shell=/bin/sh, timeout=20, cwd=/, kbd=lower
+const char* const kKbdName     = "kbd";                       // letter case set with the `kbd` built-in
 const char* const kLogPath     = "/dev/shmem/id6term-app.log";
 const size_t      kLogCap      = 512 * 1024;
 const char* const kDefaultShell = "/bin/sh";
@@ -151,24 +153,33 @@ struct Config {
     std::string shell;
     int timeoutS;
     std::string cwd;
-    Config() : shell(kDefaultShell), timeoutS(kDefaultTimeoutS), cwd("/") {}
+    LetterCase kbd;
+    Config() : shell(kDefaultShell), timeoutS(kDefaultTimeoutS), cwd("/"), kbd(kCaseLower) {}
 };
 
 void loadConfig(Config& c) {
     FILE* f = fopen(dataPath(kConfigName).c_str(), "r");
-    if (!f) return;
-    char line[256];
-    while (fgets(line, sizeof(line), f)) {
-        std::string l = History::trimmed(line);
-        if (l.empty() || l[0] == '#') continue;
-        size_t eq = l.find('=');
-        if (eq == std::string::npos) continue;
-        std::string k = l.substr(0, eq), v = History::trimmed(l.substr(eq + 1));
-        if (k == "shell" && !v.empty()) c.shell = v;
-        else if (k == "timeout") c.timeoutS = atoi(v.c_str());
-        else if (k == "cwd" && !v.empty()) c.cwd = v;
+    if (f) {
+        char line[256];
+        while (fgets(line, sizeof(line), f)) {
+            std::string l = History::trimmed(line);
+            if (l.empty() || l[0] == '#') continue;
+            size_t eq = l.find('=');
+            if (eq == std::string::npos) continue;
+            std::string k = l.substr(0, eq), v = History::trimmed(l.substr(eq + 1));
+            if (k == "shell" && !v.empty()) c.shell = v;
+            else if (k == "timeout") c.timeoutS = atoi(v.c_str());
+            else if (k == "cwd" && !v.empty()) c.cwd = v;
+            else if (k == "kbd") parseLetterCase(v, &c.kbd);
+        }
+        fclose(f);
     }
-    fclose(f);
+    f = fopen(dataPath(kKbdName).c_str(), "r");            // the last `kbd <mode>` wins over the config
+    if (f) {
+        char line[32];
+        if (fgets(line, sizeof(line), f)) parseLetterCase(History::trimmed(line), &c.kbd);
+        fclose(f);
+    }
 }
 
 // ---- state --------------------------------------------------------------------------------------------------------
@@ -185,6 +196,7 @@ unsigned    g_publishedGen = (unsigned)-1;
 bool        g_busyShown = false;
 int         g_lastRc = 0;
 bool        g_haveLastRc = false;
+unsigned    g_sessions = 0;         // shell sessions started
 
 // ---- model helpers --------------------------------------------------------------------------------------------------
 // A 1-column raListModel table of strings: rows[i] becomes cell (i, 0) as a BasicString<char> Variant (type 0x22).
@@ -256,12 +268,38 @@ void showAbout(bmw::PluginApp* app) {
 void echoHelp() {
     char line[200];
     g_buf.addLine(ID6TERM_BANNER);
-    snprintf(line, sizeof(line), "Every line runs as: %s -c <line>  (pipes, &&, cd ... all work)", g_cfg.shell.c_str());
+    snprintf(line, sizeof(line), "One %s session runs every line, like a terminal: cd, variables, functions persist.",
+             g_cfg.shell.c_str());
     g_buf.addLine(line);
-    snprintf(line, sizeof(line), "cd persists between commands. Timeout per command: %d s; Stop kills it earlier.", g_cfg.timeoutS);
+    snprintf(line, sizeof(line), "stdin is /dev/null. Timeout per command: %d s; Stop interrupts it earlier (Ctrl-C).",
+             g_cfg.timeoutS);
     g_buf.addLine(line);
-    g_buf.addLine("Built-ins: clear, help, history.  Speller: pick a suggestion to run it; empty OK = run last.");
-    g_buf.addLine("Config: " + dataPath(kConfigName) + " (shell=, timeout=, cwd=)");
+    g_buf.addLine("Built-ins: clear, help, history, kbd.  Speller: pick a suggestion to run it; empty OK = run last.");
+    snprintf(line, sizeof(line), "kbd lower|invert|asis: letter case of the keyboard (now: %s).",
+             letterCaseName(g_input.letterCase()));
+    g_buf.addLine(line);
+    g_buf.addLine("Config: " + dataPath(kConfigName) + " (shell=, timeout=, cwd=, kbd=)");
+}
+
+// `kbd`: shows or sets what happens to the case of speller letters (see LetterCase), persisted in <dataDir>/kbd.
+void kbdBuiltin(const std::string& cmd) {
+    std::string arg = History::trimmed(cmd.substr(3));
+    LetterCase c;
+    if (!arg.empty()) {
+        if (!parseLetterCase(arg, &c)) {
+            g_buf.addLine("kbd: unknown mode '" + arg + "' (lower, invert, asis)");
+            return;
+        }
+        g_input.setLetterCase(c);
+        FILE* f = fopen(dataPath(kKbdName).c_str(), "w");
+        if (f) { fprintf(f, "%s\n", letterCaseName(c)); fclose(f); }
+        alog("kbd -> %s", letterCaseName(c));
+    }
+    c = g_input.letterCase();
+    const char* what = c == kCaseLower ? "letters are typed in lower case"
+                     : c == kCaseInvert ? "case swapped: the keyboard's capitals type lower case and vice versa"
+                     : "letters are typed as the keyboard sends them";
+    g_buf.addLine(std::string("kbd ") + letterCaseName(c) + ": " + what);
 }
 
 void runCommand(bmw::PluginApp* app, const std::string& raw) {
@@ -285,6 +323,11 @@ void runCommand(bmw::PluginApp* app, const std::string& raw) {
         publishConsole(app, true);
         return;
     }
+    case kBuiltinKbd:
+        g_buf.addLine(g_cwd + " $ " + cmd);
+        kbdBuiltin(cmd);
+        publishConsole(app, true);
+        return;
     case kNotBuiltin:
         break;
     }
@@ -297,25 +340,35 @@ void runCommand(bmw::PluginApp* app, const std::string& raw) {
     g_history.save(dataPath(kHistoryName).c_str());
     g_buf.addLine(g_cwd + " $ " + cmd);
     std::string err;
-    if (!g_runner.start(cmd, g_cwd, g_cfg.shell, g_cfg.timeoutS, &err)) {
+    bool fresh = false;
+    if (!g_runner.start(cmd, g_cwd, g_cfg.shell, g_cfg.timeoutS, &err, &fresh)) {
         g_buf.addLine("[error] " + err);
         alog("run: start failed: %s", err.c_str());
     } else {
+        if (fresh) {
+            if (g_sessions) g_buf.addLine("[new shell session in " + g_cwd + "]");
+            ++g_sessions;
+            alog("shell session %u started (%s)", g_sessions, g_cfg.shell.c_str());
+        }
         showBusy(app, true);
     }
     publishConsole(app, true);
 }
 
-// Called from the poll Runnable: output and completion of the running command.
+// Called from the poll Runnable: output (also of background jobs while idle) and completion of the running command.
 void serviceRunner(bmw::PluginApp* app) {
-    if (!g_runner.running()) return;
     RunResult r;
     bool timedOut = false, killed = false;
     std::string cmd = g_runner.command();
     if (g_runner.pump(g_buf, &r, &timedOut, &killed)) {
         char tail[160];
-        if (timedOut) snprintf(tail, sizeof(tail), "[timeout after %d s, killed]", g_cfg.timeoutS);
-        else if (killed) snprintf(tail, sizeof(tail), "[stopped]");
+        if (killed && r.shellExited)
+            snprintf(tail, sizeof(tail), "[%s, shell killed; the next command starts a new session]",
+                     timedOut ? "timeout" : "stopped");
+        else if (timedOut) snprintf(tail, sizeof(tail), "[timeout after %d s, interrupted]", g_cfg.timeoutS);
+        else if (killed) snprintf(tail, sizeof(tail), "[interrupted]");
+        else if (r.shellExited)
+            snprintf(tail, sizeof(tail), "[shell exited (%d); the next command starts a new session]", r.rc);
         else if (r.rc == 0) tail[0] = 0;
         else snprintf(tail, sizeof(tail), "[exit %d]", r.rc);
         if (tail[0]) g_buf.addLine(tail);
@@ -326,8 +379,8 @@ void serviceRunner(bmw::PluginApp* app) {
         g_lastRc = r.rc;
         g_haveLastRc = true;
         showBusy(app, false);
-        alog("done: '%s' rc %d%s%s (%u lines in buffer)", cmd.c_str(), r.rc, timedOut ? " timeout" : "",
-             killed ? " killed" : "", (unsigned)g_buf.lineCount());
+        alog("done: '%s' rc %d%s%s%s (%u lines in buffer)", cmd.c_str(), r.rc, timedOut ? " timeout" : "",
+             killed ? " killed" : "", r.shellExited ? " shell-exited" : "", (unsigned)g_buf.lineCount());
         publishConsole(app, true);
     } else {
         publishConsole(app, false);
@@ -549,6 +602,7 @@ bool appOnInit(bmw::PluginApp* self) {
     initDataDir();
     loadConfig(g_cfg);
     g_cwd = g_cfg.cwd;
+    g_input.setLetterCase(g_cfg.kbd);
     g_history.load(dataPath(kHistoryName).c_str());
 
     addMapAction(self, kActLetter, &onLetter);
@@ -576,8 +630,9 @@ bool appOnInit(bmw::PluginApp* self) {
     showInput(self);
     showSuggestions(self);
     startPolling(self);
-    alog("onInit: handlers registered, base onInit -> %d, shell %s, timeout %d s, cwd %s, %u history entries, data in %s",
-         (int)ok, g_cfg.shell.c_str(), g_cfg.timeoutS, g_cwd.c_str(), (unsigned)g_history.entries().size(), g_dataDir.c_str());
+    alog("onInit: handlers registered, base onInit -> %d, shell %s, timeout %d s, cwd %s, kbd %s, %u history entries, data in %s",
+         (int)ok, g_cfg.shell.c_str(), g_cfg.timeoutS, g_cwd.c_str(), letterCaseName(g_cfg.kbd),
+         (unsigned)g_history.entries().size(), g_dataDir.c_str());
     return ok;
 }
 
@@ -589,7 +644,7 @@ void appOnError(bmw::PluginApp* /*self*/, unsigned code, const bmw::BasicString<
 void appOnFinalize(bmw::PluginApp* self) {
     alog("onFinalize");
     g_runApp = 0;
-    if (g_runner.running()) g_runner.stop();
+    g_runner.shutdown();
     self->onFinalize();
 }
 

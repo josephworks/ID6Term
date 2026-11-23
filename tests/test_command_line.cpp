@@ -85,42 +85,71 @@ int main() {
         unlink(path);
         CHECK(!h2.load("/nonexistent/dir/history"));
     }
-    {   // the wrapper script: cd to $1, the command verbatim, then the sentinel with $PWD and the exit status
-        std::string s = buildScript("echo hi | tr a-z A-Z");
-        CHECK(s.find("cd \"$1\" 2>/dev/null\n") == 0);
-        CHECK(s.find("\necho hi | tr a-z A-Z\n") != std::string::npos);
-        CHECK(s.find("__id6rc=$?") != std::string::npos);
-        CHECK(s.find("printf '\\n\\001%s\\002%s\\n' \"$PWD\" \"$__id6rc\"") != std::string::npos);
+    {   // shell quoting: one single-quoted word, embedded quotes survive
+        CHECK_EQ_STR(shellQuote("ls -la /"), "'ls -la /'");
+        CHECK_EQ_STR(shellQuote("echo 'a'"), "'echo '\\''a'\\'''");
+        CHECK_EQ_STR(shellQuote(""), "''");
     }
-    {   // sentinel parsing: strips it and the one newline printf put in front, reads cwd and rc
-        std::string out = "hello\n\n\001/opt/aa\002" "3\n";   // "hello\n" from echo, "\n" from the sentinel printf
-        RunResult r = parseSentinel(out);
+    {   // the session init: the interrupt trap, the wrapper, cd to the start directory (quoted) with / as fallback
+        std::string s = buildSessionInit("/fs/my dir");
+        CHECK(s.find("trap '[ -n \"${__id6in-}\" ] && { __id6in=; return 130; }' INT TERM\n") == 0);
+        CHECK(s.find("__id6run() {") != std::string::npos);
+        CHECK(s.find("cd '/fs/my dir' 2>/dev/null || cd /\n") != std::string::npos);
+        CHECK(buildSessionInit("").find("cd '/' 2>/dev/null") != std::string::npos);
+        CHECK(s.find("printf") == std::string::npos);     // not a builtin of the head unit's sh
+    }
+    {   // one command line: the wrapper with the quoted command, then the sentinel with the exit status and $PWD
+        std::string s = buildCommandLine("echo 'hi' | tr a-z A-Z", "__M__");
+        CHECK_EQ_STR(s, "__id6run 'echo '\\''hi'\\'' | tr a-z A-Z'; __id6rc=$?; __id6in=; echo ''; "
+                        "echo \"__M__ $__id6rc $PWD\"\n");
+        CHECK(s.find("printf") == std::string::npos);
+    }
+    {   // sentinel lines: marker at the line start, a number, the directory (may contain spaces)
+        RunResult r;
+        CHECK(parseSentinelLine("__M__ 3 /opt/a b", "__M__", &r));
         CHECK(r.haveSentinel);
-        CHECK_EQ_STR(r.cwd, "/opt/aa");
         CHECK_EQ(r.rc, 3);
-        CHECK_EQ_STR(out, "hello\n");
-
-        out = "no newline before\001/\002" "0\n";       // command output without a trailing newline
-        r = parseSentinel(out);
-        CHECK(r.haveSentinel);
-        CHECK_EQ_STR(out, "no newline before");
-        CHECK_EQ(r.rc, 0);
-
-        out = "\001fake\n\002" "x\n\001/real\002" "7\n";   // the command printed a \001 itself: the LAST one counts
-        r = parseSentinel(out);
-        CHECK(r.haveSentinel);
-        CHECK_EQ_STR(r.cwd, "/real");
-        CHECK_EQ(r.rc, 7);
-        CHECK_EQ_STR(out, "\001fake\n\002" "x");
-
-        out = "killed before the end";
-        r = parseSentinel(out);
-        CHECK(!r.haveSentinel);
-        CHECK_EQ_STR(out, "killed before the end");
-
-        out = "\001only start, no separator\n";
-        r = parseSentinel(out);
-        CHECK(!r.haveSentinel);
+        CHECK_EQ_STR(r.cwd, "/opt/a b");
+        RunResult r2;
+        CHECK(parseSentinelLine("__M__ 130 /\r", "__M__", &r2));
+        CHECK_EQ(r2.rc, 130);
+        CHECK_EQ_STR(r2.cwd, "/");
+        RunResult no;
+        CHECK(!parseSentinelLine("__M__ $__id6rc $PWD", "__M__", &no));     // set -v echoing the input
+        CHECK(!parseSentinelLine("+ echo '__M__ 0 /'", "__M__", &no));      // set -x trace
+        CHECK(!parseSentinelLine("__M__ 0", "__M__", &no));
+        CHECK(!parseSentinelLine("__M__ 0 ", "__M__", &no));
+        CHECK(!parseSentinelLine("__M__0 /", "__M__", &no));
+        CHECK(!parseSentinelLine("__X__ 0 /", "__M__", &no));
+        CHECK(!parseSentinelLine("", "__M__", &no));
+        CHECK(!no.haveSentinel);
+    }
+    {   // letter case: the upper-case on-screen keyboard types lower case by default; invert swaps; asis keeps
+        SpellerInput in;
+        CHECK_EQ(in.letterCase(), kCaseLower);
+        in.apply("L"); in.apply("S"); in.apply(" "); in.apply("-"); in.apply("l");
+        CHECK_EQ_STR(in.text(), "ls -l");
+        in.clear();
+        in.setLetterCase(kCaseInvert);
+        in.apply("L"); in.apply("s"); in.apply("1");
+        CHECK_EQ_STR(in.text(), "lS1");
+        in.clear();
+        in.setLetterCase(kCaseAsIs);
+        in.apply("L"); in.apply("s");
+        CHECK_EQ_STR(in.text(), "Ls");
+        in.clear();
+        in.setLetterCase(kCaseLower);
+        in.apply("Echo $PATH");                        // several characters at once: text, kept as it is
+        CHECK_EQ_STR(in.text(), "Echo $PATH");
+        LetterCase c = kCaseAsIs;
+        CHECK(parseLetterCase("lower", &c));
+        CHECK_EQ(c, kCaseLower);
+        CHECK(parseLetterCase("invert", &c));
+        CHECK_EQ(c, kCaseInvert);
+        CHECK(parseLetterCase("asis", &c));
+        CHECK_EQ(c, kCaseAsIs);
+        CHECK(!parseLetterCase("UPPER", &c));
+        CHECK_EQ_STR(letterCaseName(kCaseInvert), "invert");
     }
     {   // built-ins
         CHECK_EQ(classifyBuiltin("clear"), kBuiltinClear);
@@ -128,6 +157,9 @@ int main() {
         CHECK_EQ(classifyBuiltin("help"), kBuiltinHelp);
         CHECK_EQ(classifyBuiltin("?"), kBuiltinHelp);
         CHECK_EQ(classifyBuiltin("history"), kBuiltinHistory);
+        CHECK_EQ(classifyBuiltin("kbd"), kBuiltinKbd);
+        CHECK_EQ(classifyBuiltin("kbd invert"), kBuiltinKbd);
+        CHECK_EQ(classifyBuiltin("kbdx"), kNotBuiltin);
         CHECK_EQ(classifyBuiltin("clear screen"), kNotBuiltin);
         CHECK_EQ(classifyBuiltin("ls"), kNotBuiltin);
     }
