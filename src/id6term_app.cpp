@@ -1,8 +1,8 @@
 // id6term_app.cpp - libID6Term.so: a shell terminal as a native iDrive "PluginApp" for NBT Evo (ID6) head units.
 //
 // HmiMain3D's CAppManager loads every <ro|rw>/Plugins/<Name>/<Name>.manifest at boot. Ours names this library,
-// the UI description (ID6Term.xml) and the text / image DBs. The XML declares the "Terminal" entry row in the
-// Media/Radio list (insertStateID 20 after the Bluetooth audio row, like NBT-AAD's) and our screens:
+// the UI description (ID6Term.xml) and the text / image DBs. The XML declares the "Terminal" entry row in
+// ConnectedDrive under "Vehicle Apps" (state 50 = ST_CDr_Selection, after the section label, focus 7514) and our screens:
 //   hmiState 10  menu       Console / Enter command / Run last command again / Quick commands / Stop / Clear / About,
 //                           titled "Terminal - Joseph Robinson", with a footer label "ID6Term <release> by Joseph Robinson"
 //   hmiState 11  Console    status label (raDataModel 40), "Enter command" button, Richtext list (raListModel 41)

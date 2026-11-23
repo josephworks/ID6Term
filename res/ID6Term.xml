@@ -2,14 +2,19 @@
 <!-- ID6Term UI description (iDrive PluginApp / RHMI format, same schema as BMW's SecurityMenu / ActiveSeating and
      NBT-AAD's NbtAad.xml). Ids are shared with src/id6term_app.cpp and res/make_db.py.
 
-     Entry: a "Terminal" row in Media/Radio (native state 20 = ST_Ent_Selection) after the Bluetooth audio row
-     (focus 2270); iDrive creates and places the row itself (applicationType="Custom" + insertStateID /
-     insertAfterFocusID). Pressing it opens our menu, hmiState 10.
+     Entry: a "Terminal" row in ConnectedDrive under the "Vehicle Apps" heading. The ConnectedDrive menu is one
+     native list, ST_CDr_Selection = state 50, with sections: OnlineApps stripline 7513 + label 7514 ("Vehicle Apps",
+     the BMW Online apps), BMWApps stripline 7515 + label 7516 ("Smartphone Apps", where applicationType=
+     "OnlineServices" puts BMW Apps / AAIdrive apps and where ID6Term 1.0.2-pre landed), then the native rows
+     (BMW Assistance stripline 6307 ...). Ids read from HmiMain3D (CHmiCDrApplication::initMenus). So: applicationType
+     "Custom" (the "entry button everywhere" rule: the XML's insertStateID is used as-is) after focus 7514. Until 1.0.1
+     the row was in Media/Radio (state 20 after the Bluetooth audio row, focus 2270). iDrive creates and places the
+     row itself. Pressing it opens our menu, hmiState 10.
 
      Every <textIdModel> textId must exist in ID6Term_ALL_Texts.zip and the highest textId used by the DB must be
      declared here, or iDrive drops the whole text DB (every label blank) - NBT-AAD learned that the hard way. -->
 <pluginApps>
-  <pluginApp applicationType="Custom" applicationWeight="198" entryButtonFocusID="32760" insertAfterFocusID="2270" insertStateID="20" text="Terminal">
+  <pluginApp applicationType="Custom" applicationWeight="198" entryButtonFocusID="32760" insertAfterFocusID="7514" insertStateID="50" text="Terminal">
     <comment/>
     <entryButton action="5" id="1" model="3" imageModel="4" previewModel="13">
       <properties/>

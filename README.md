@@ -2,8 +2,8 @@
 
 by **Joseph Robinson**
 
-ID6Term is a native iDrive **PluginApp** (`libID6Term.so`) that adds a **Terminal** row to the Media/Radio list
-of an NBT Evo (ID6) head unit. From there you type a command line with the iDrive speller and run it through the
+ID6Term is a native iDrive **PluginApp** (`libID6Term.so`) that adds a **Terminal** row under **Vehicle Apps** in
+the ConnectedDrive menu of an NBT Evo (ID6) head unit. From there you type a command line with the iDrive speller and run it through the
 head unit's `/bin/sh`; the output shows in a scrollable console screen. No SSH cable, no laptop - the car's own
 screen and controller.
 
@@ -14,7 +14,8 @@ the menu row. Nothing in the firmware is patched.
 
 General notes for writing *any* PluginApp (loading mechanism, XML reference, framework ABI, build setup, id
 registry, a compilable skeleton) live in the [BMW-ID6-WS `docs/`](https://github.com/josephworks/BMW-ID6-WS/tree/master/docs)
-folder.
+folder. Building ID6Term from source, the layout of this repo and how a release is packaged for NBTApps are in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 > **Warning.** Commands run on the head unit as the HMI's user (root). A wrong `rm`, a renamed system file, a
 > hung process can leave the unit unbootable; only Toyota/BMW can reflash it. There is no undo. The code is
@@ -30,50 +31,6 @@ is still open.
 Note: the su command is missing, so another method for switching users will be needed.
 * Car-test the shell session (`cd /mnt` then `ls`, Stop, timeout) and the `kbd` letter case. Host-tested against
   the unit's exact shell version (PD KSH v5.2.14 built from source) plus dash, bash, busybox sh, mksh and lksh.
-
-## Contents
-
-| Path | What |
-|---|---|
-| `src/id6term_app.cpp` | The PluginApp: entry point `pluginAppInfo`, handlers, model updates, polling |
-| `src/bmw_rhmi.hpp` | Declarations of the BMW framework ABI (PluginApp, Parcel, BasicString, Variant, Map, DataTable) and safe readers for action arguments |
-| `src/term_buffer.hpp` | Console text: bounded line ring, control-character / ANSI filter |
-| `src/command_line.hpp` | Speller editing (+ letter case), history + suggestions, the session shell's init script, command wrapper and end-of-command sentinel |
-| `src/shell_runner.{hpp,cpp}` | The shell session: one long-lived `sh` (`spawn()` + stdin/stdout pipes + reader thread), one command at a time, timeout, stop |
-| `res/ID6Term.xml` | UI description: entry row, menu, console, speller, quick commands, about |
-| `res/ID6Term.manifest` | Tells CAppManager what to load |
-| `res/make_db.py` | Generates `ID6Term_ALL_Texts.zip` (10 languages) and `ID6Term_ALL_Images.zip` (icons drawn procedurally) |
-| `lib/` | `libAppFramework.A.so`, `libCoreFramework.A.so` from the head unit (`/opt/hmi/ID5/lib`), link-time only |
-| `tests/` | Host tests (Linux g++) for the terminal core |
-| `tools/package.py` | Collects `dist/ID6Term/` with everything the head unit needs plus `install.sh` |
-| `common.mk`, `Makefile`, `arm/so-le-v7/` | QNX Momentics recursive build (shared object, armv7le, GNU libstdc++) |
-
-## Building
-
-**Momentics IDE (SDP 6.5.0):** import/open the project, right-click -> Clean, then Build. Output:
-`arm/so-le-v7/libID6Term.so`.
-
-**Command line (Windows host with the SDP installed):**
-
-```powershell
-$env:QNX_HOST="C:/ProgramData/QNX650/host/win32/x86"; $env:QNX_TARGET="C:/ProgramData/QNX650/target/qnx6"
-$env:MAKEFLAGS="-I$env:QNX_TARGET/usr/include"; $env:PATH="$env:QNX_HOST/usr/bin;$env:PATH"
-make                      # -> arm/so-le-v7/libID6Term.so
-python tools\package.py   # -> dist/ID6Term/ (regenerates the text/image zips too)
-```
-
-Build facts that matter (all learned from NBT-AAD):
-- The library is a PIC shared object built with the **GNU libstdc++** variant (`-Y _gpp`): HmiMain3D and BMW's own
-  plugins use `libstdc++.so.6`, not the Dinkumware default.
-- It links against the two framework libraries in `lib/` only to resolve the `bmw::` symbols; `--allow-shlib-undefined`
-  because those depend on more libraries that only exist on the car. On the unit the RPATH `/opt/hmi/ID5/lib` finds them.
-- QNX GCC 4.4.2: no `__sync_*`, no local classes as template arguments, `<stddef.h>` for `size_t`.
-
-**Host tests** (Linux g++; WSL works): `make -C tests check` builds and runs `test_term_buffer`, `test_command_line`
-and `test_shell_runner` (the latter runs a session of the host `/bin/sh`: `cd` / variable / function persistence,
-streamed output, errors not ending the session, timeout and `stop()` interrupting only the command, SIGKILL
-escalation, `exit`, background output). `ID6TERM_TEST_SHELL=/path/to/mksh tests/build/test_shell_runner` runs it
-against another shell; mksh is the closest to the head unit's pdksh-based `/bin/sh`.
 
 ## Installing
 
@@ -94,7 +51,8 @@ Download the latest release from the repository or the [Release page](https://gi
 
 https://github.com/josephworks/ID6Term/releases
 
-Copy `dist/ID6Term/` or the extracted Release `/ID6Term` to a USB stick (or `scp` it to `/tmp`), then on the head unit:
+Copy the extracted release folder `ID6Term/` (or `dist/ID6Term/` from your own build, see
+[CONTRIBUTING.md](CONTRIBUTING.md)) to a USB stick (or `scp` it to `/tmp`), then on the head unit:
 
 ```sh
 cd /mnt/umass01200t7/ID6Term      # or wherever the files are extracted/copied
@@ -114,19 +72,28 @@ Then, restart the head unit by holding the power button for ~30 seconds. Or run 
 OnOffDSICommander appreset
 ```
 
-Hold the power button ~30 s to restart. **Media/Radio** then has a **Terminal** row after the Bluetooth audio row.
-(The same `Plugins` folder is where NBT-AAD's `NbtAad` lives; both can be installed side by side - ID6Term uses
-different focus ids, connector id and application weight.)
+Hold the power button ~30 s to restart. **ConnectedDrive** then has a **Terminal** row under its **Vehicle Apps** heading. (The same `Plugins` folder is where NBT-AAD's `NbtAad` and NBTApps' `NbtApp` live; all
+can be installed side by side - ID6Term uses its own focus id (32760), connector id (300) and application weight.)
 
 Uninstall: `sh uninstall.sh` (= `rm -rf /opt/hmi/ID5/data/ro/Plugins/ID6Term`) and reboot. Kill switch without
 uninstalling: `touch /var/opt/id6term/disable` - the library then refuses to create the app at the next HMI start.
 
+### Installing with NBTApps
+
+ID6Term is also available through [NBTApps](https://github.com/tom-pryor/nbtapps), the phone app that installs
+signed packages onto the head unit over Bluetooth - no USB stick or SSH needed. Once the package is listed in the
+catalogue, open the app, find **ID6Term** under community packages and install it; the iDrive screen restarts and
+the **Terminal** row appears in ConnectedDrive under Vehicle Apps. It needs the NBTApps agent 1.2.0 or later (the app offers the update).
+
+If ID6Term was installed by hand before, run `sh uninstall.sh` on the head unit first: NBTApps refuses to write over
+files it did not put there. Removing the package through the app leaves your history and config in
+`/var/opt/id6term`.
+
 ## Using it
 
-**Terminal** (menu, hmiState 10) - titled "Terminal - Joseph Robinson", with a footer line "ID6Term 1.0.0 by
-Joseph Robinson". The Media/Radio row itself stays the short "Terminal". The name also appears in the console
-banner, `help`, the About page and the plugin's vendor string (`ID6TERM_AUTHOR` in `id6term_app.cpp`, `AUTHOR` in
-`make_db.py`).
+**Terminal** (menu, hmiState 10) - titled "Terminal - Joseph Robinson", with a footer line "ID6Term <version> by
+Joseph Robinson". The ConnectedDrive row itself stays the short "Terminal". The name also appears in the console
+banner, `help` and the About page.
 
 | Row | Does |
 |---|---|
@@ -177,7 +144,13 @@ confirmed.
 
 ## How it works
 
-- **Entry row / screens:** declared in `ID6Term.xml`; iDrive renders them. Our code only reacts to `raAction`s
+- **Entry row / screens:** declared in `ID6Term.xml`; iDrive renders them. The row uses the "entry button
+  everywhere" rule (`applicationType="Custom"`: the XML's `insertStateID` is taken as-is): state **50** =
+  `ST_CDr_Selection`, the ConnectedDrive menu, after focus **7514**, the "Vehicle Apps" section label. That menu is
+  one list with sections - OnlineApps stripline 7513 / label 7514 (Vehicle Apps), BMWApps stripline 7515 / label
+  7516 (Smartphone Apps, where `applicationType="OnlineServices"`, the BMW Apps category, lands), then the native
+  rows - the ids read from `CHmiCDrApplication::initMenus` in HmiMain3D. Up to 1.0.1 the row was in Media/Radio
+  (state 20 after focus 2270, like NBT-AAD's). Our code only reacts to `raAction`s
   and fills models. State ids 10..15, actions 5/21..23/26..28/30..37/71..74, models 3/4/12/13/31..37/40..46/50..57.
 - **Speller:** the `<input>` component with `action` (per letter, argument **8** = text, or `del` / `delall`),
   `suggestAction` (argument **1** = row) and `resultAction`, as in the BMW Apps RHMI protocol that AAIdrive uses.
@@ -216,7 +189,7 @@ confirmed.
 - Exported and used: `updateModel(unsigned, const char*)`, `updateModel(unsigned, const DataTableBase&)`,
   `addHandlerWithMap`, `Parcel::size/dataAvail/getRawData/readBool`, `setProperty`, `triggerEvent`, `post`.
 - Everything else (vtable slot numbers 21/22/23, `kPluginAppStorage`, the Runnable stand-in, `pluginAppInfo`
-  layout, manifest/XML schema, placement in state 20 after focus 2270, Richtext list + `TextID` cell, busy ring
+  layout, manifest/XML schema, the entry-button-everywhere placement, Richtext list + `TextID` cell, busy ring
   property 8) is taken as-is from NBT-AAD's car-proven `rhmiapp/nbt_aad_app.cpp`.
 
 ## Car test results
@@ -233,8 +206,12 @@ First car test 2026-11-14 (NBT Evo, 0.1.0 -> 1.0.0). Confirmed working:
 4. **`spawn()` of `/bin/sh` from inside HmiMain3D** with fd map + new process group works; output streams.
 5. Found and fixed: the inherited `LD_PRELOAD=libKD.so.1` ("unknown symbol: kdMain") - see Environment above.
 
-Still unverified: the preview image next to the entry row (`previewModel`), model-size / update-rate limits (none
-hit so far), umlauts through `updateModel(unsigned, const char*)`.
+Second car test 2026-11-23 (1.0.2-pre): `applicationType="OnlineServices"` is accepted for a native PluginApp and
+puts the row under ConnectedDrive > **Smartphone Apps** - the first confirmation that the BMW Apps category rule
+applies to plugins too. The Vehicle Apps placement (state 50 after focus 7514) is not car-tested yet.
+
+Still unverified: the Vehicle Apps placement, the preview image next to the entry row (`previewModel`), model-size /
+update-rate limits (none hit so far), umlauts through `updateModel(unsigned, const char*)`.
 
 ## License
 
