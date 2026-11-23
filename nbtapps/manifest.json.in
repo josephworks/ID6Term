@@ -1,0 +1,24 @@
+{
+  "manifestVersion": 1,
+  "id": "net.josephworks.id6term",
+  "name": "ID6Term",
+  "version": "@VERSION@",
+  "requires": {
+    "agent": ">=1.2.0"
+  },
+  "install": {
+    "files": [
+      {
+        "src": "payload/ID6Term/",
+        "dest": "${plugins}/ID6Term/",
+        "mode": "0644"
+      }
+    ],
+    "reboot": "hmi-restart"
+  },
+  "logs": [
+    {
+      "path": "/dev/shmem/id6term-app.log"
+    }
+  ]
+}

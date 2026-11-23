@@ -9,6 +9,8 @@ arm/so-le-v7/.depend*
 tests/build/
 # packaging
 dist/
+# nbtpkg signing keys never belong in the repo (tools/nbtpkg_build.py reads them from outside it)
+*.key
 # generated resource DBs (python res/make_db.py)
 res/ID6Term_ALL_Texts.zip
 res/ID6Term_ALL_Images.zip

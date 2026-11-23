@@ -8,7 +8,7 @@
 		<dependencies>
 			<pluginAppConnector>
 				<type>Etch</type>
-				<id>211</id>
+				<id>300</id>
 				<asyncCallbacks>yes</asyncCallbacks>
 			</pluginAppConnector>
 		</dependencies>

@@ -49,7 +49,7 @@
 #include "shell_runner.hpp"
 
 #define ID6TERM_AUTHOR  "Joseph Robinson"
-#define ID6TERM_RELEASE "1.0.1"
+#define ID6TERM_RELEASE "1.0.2"
 #define ID6TERM_VERSION "id6term-" ID6TERM_RELEASE " (" __DATE__ " " __TIME__ ")"
 #define ID6TERM_BANNER  "ID6Term " ID6TERM_VERSION " by " ID6TERM_AUTHOR
 
